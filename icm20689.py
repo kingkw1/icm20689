@@ -1,9 +1,7 @@
 import smbus
 import spidev
 import RPi.GPIO as GPIO
-from enum import Enum
 from abc import ABC, abstractmethod
-
 from icm20689_regs import *
 import time
 import socket
@@ -77,15 +75,11 @@ class Icm20689(ABC):
 
     # Global Variables
     GRAVITIY_MS2 = 9.80665
-    #M_PI = math.pi
-    #ACCELEROMETER_SENSITIVITY = 16384 # From the specs p10. 250 mode. also self._accel_range_cached.get_lsb_sensitivity()
-    #GYROSCOPE_SENSITIVITY = 131 # From the specs p9. 2g mode
-    #dt = 0.01
-    
+
     def __init__(self, mpu_id):
         self._mpu_id = mpu_id
-        self._gyro_range_cached = FS_SEL.FS_DEG_250 
-        self._accel_range_cached = AFS_SEL.FS_2G 
+        self._gyro_range_cached = FS_SEL.FS_DEG_250
+        self._accel_range_cached = AFS_SEL.FS_2G
         self._sample_frequency_cached = 1000 # Empirically closer to 1024
 
     # hardware communication methods
@@ -189,7 +183,7 @@ class Icm20689(ABC):
  set_gyro_range(self, gyro_range)        """
 
         smplrt_div = self.read_byte_data(ICM20689Regs.SMPLRT_DIV)
-        
+
         internal_sample_freq = 1000
         sample_rate = internal_sample_freq/(smplrt_div+1)
 
@@ -247,7 +241,6 @@ class Icm20689(ABC):
         """
         raw_data = self.read_byte_data(ICM20689Regs.GYRO_CONFIG)
 
-        # self._gyro_range_cached =FS_SEL((raw_data >> 3) & 0x3)
         if raw:
             return raw_data
         else:
@@ -269,7 +262,7 @@ class Icm20689(ABC):
         z = z / gyro_scale_modifier
 
         return {'gx': x, 'gy': y, 'gz': z}
-       
+
     def get_all_data(self):
         """Reads and returns all the available data."""
         temp = self.get_temp()
@@ -280,7 +273,6 @@ class Icm20689(ABC):
         d1.update(gyro)
         d1.update(temp)
         return d1
-        #return [accel, gyro, temp]
 
     def get_fifo_count(self):
         return int(self.read_word_data(ICM20689Regs.FIFO_COUNTH, ICM20689Regs.FIFO_COUNTL) / 2)
@@ -293,7 +285,6 @@ class Icm20689(ABC):
 
         # Reset the FIFO buffer
         self.write_byte_data(ICM20689Regs.USER_CTRL, current | 1<<2)
-
         self.write_byte_data(ICM20689Regs.USER_CTRL, current | 1<<6)
 
     def read_fifo_data(self):
@@ -307,13 +298,12 @@ class Icm20689(ABC):
             x = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/accel_scale_modifier
             y = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/accel_scale_modifier
             z = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/accel_scale_modifier
-            g_x = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/gyro_scale_modifier 
+            g_x = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/gyro_scale_modifier
             g_y = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/gyro_scale_modifier
             g_z = self.read_word_data(ICM20689Regs.FIFO_R_W, ICM20689Regs.FIFO_R_W)/gyro_scale_modifier
-            
+
             data.append(MpuDataPoint(self._mpu_id, AccelerometerData(x, y, z), GyroData(g_x, g_y, g_z)))
-            #print (x, y, z)
-            #print( g_x, g_y, g_z)
+
         return data
 
 class Icm20689I2C(Icm20689):
@@ -345,7 +335,6 @@ class Icm20689I2C(Icm20689):
 
 class Icm20689SPI(Icm20689):
 
-    #FIFO_MAX = 1024
     FIFO_MAX = 4096
 
     def __init__(self, mpu_id, bus, device, chip_select):
@@ -426,8 +415,7 @@ class Icm20689SPI(Icm20689):
             return data
 
         data_points = self._get_fifo_data(math.floor(count/6) * 6)
-        
-        # print(self._gyro_range_cached)
+
         gyro_scale_modifier = self._gyro_range_cached.get_lsb_sensitivity()
         accel_scale_modifier = self._accel_range_cached.get_lsb_sensitivity() / self.GRAVITIY_MS2
 
@@ -438,10 +426,9 @@ class Icm20689SPI(Icm20689):
             x = data_points[i+0]/accel_scale_modifier
             y = data_points[i+1]/accel_scale_modifier
             z = data_points[i+2]/accel_scale_modifier
-            
+
             data.append(MpuDataPoint(self._mpu_id, AccelerometerData(x, y, z), GyroData(g_x, g_y, g_z)))
-            #print('gyro data: ', g_x,g_y,g_z)
-            #print('accelo data: ', x,y,z)
+
         return data
 
 class InterruptableThread(threading.Thread):
@@ -474,14 +461,13 @@ class UdpNetworkSenderThread(InterruptableThread):
                 except Empty:
                     pass
                 print ("Sending data with %d points" % len(data))
-                #print("X: %d   Y: %d   Z: %d" % (data.g_x, data.g_y, data.g_z, ))
                 packet = MpuDataPacket(data)
                 sock.sendto(packet.serialize(), (self._ip_addr, self._port))
             except Empty:
                 pass
 
 class TcpNetworkSenderThread(InterruptableThread):
-    # NOTE: This is functional but currently clunky. 
+    # NOTE: This is functional but currently clunky.
     def __init__(self, queue, ip_addr='192.168.0.200', port = 1025):
         super(TcpNetworkSenderThread, self).__init__()
         self._data_queue = queue
@@ -501,14 +487,12 @@ class TcpNetworkSenderThread(InterruptableThread):
                 except Empty:
                     pass
                 print ("Sending data with %d points" % len(data))
-                #print("X: %d   Y: %d   Z: %d" % (data.g_x, data.g_y, data.g_z, ))
                 packet = MpuDataPacket(data)
                 sock.sendto(packet.serialize(), (self._ip_addr, self._port))
             except Empty:
                 pass
 
 class DataCollectionThread(InterruptableThread):
-
     def __init__(self, queue, chips, wait_sleep=.005):
         super(DataCollectionThread, self).__init__()
         self._queue = queue
@@ -524,7 +508,6 @@ class DataCollectionThread(InterruptableThread):
                 data = chip.read_fifo_data()
                 self._queue.put(data)
             time.sleep(self._wait_sleep)
-            #print(data)
 
 class Write2FileThread(InterruptableThread):
     def __init__(self, queue, sampNum = 0):
@@ -535,7 +518,6 @@ class Write2FileThread(InterruptableThread):
     def run(self):
         f = open("temp.txt","w+")
         start = time.time()
-        #f.write("%.2d start datenum\r" % (start))
         while time.time() - start < 3600:
             try:
                 data = self._data_queue.get(timeout=1)
@@ -564,43 +546,37 @@ def quit_handler(signal, frame):
 
 
 if __name__ == "__main__":
-    i2c_chips = False
-    tcp_send = False
-    w2f = False 
-    
+    # Ignore some initilization warnings
     GPIO.setwarnings(False)
+
+    # Close leftover threads
     signal.signal(signal.SIGINT, quit_handler)
 
-    # Initialize each chip
+    # Initialize the chips with CS pins connected to the following pins GPIO pins on RasPi
     chips = []
-    GPIOS = [22, 23, 24, 25] # GPIOS = [22, 23, 24, 25, 27]
+    GPIOS = [22, 23, 24, 25]
     for i, gpio in enumerate(GPIOS):
-        if  i2c_chips:
-            chip = Icm20689I2C(i+1, 1, gpio)
-        else:
-            chip = Icm20689SPI(i+1, 0, 0, gpio)
+        # Define IMU transmission mode (i.e. SPI, I2C, or W2F)
+        chip = Icm20689SPI(i+1, 0, 0, gpio)
         chip.set_fifo_enable()
         chip.write_byte_data(ICM20689Regs.CONFIG, 1)
-        #chip.write_byte_data(ICM20689Regs.SMPLRT_DIV, 0x00) # sample rate set to internal fs (1khz)
+        # Alter imu recording settings
         chip.set_sample_frequency(100)
         chip.set_accel_range(AFS_SEL.FS_8G.value)
         chip.set_gyro_range(FS_SEL.FS_DEG_2000.value)
+        # Add chip to the list
         chips.append(chip)
 
     # Set up simultaneous threads for data collection and transmission
     queue = Queue()
-    if tcp_send:
-        THREAD_SET.append(TcpNetworkSenderThread(queue))
-    elif w2f:
-        THREAD_SET.append(Write2FileThread(queue))
-    else:
-        THREAD_SET.append(UdpNetworkSenderThread(queue)) 
-    THREAD_SET.append(DataCollectionThread(queue, chips)) 
+    THREAD_SET.append(UdpNetworkSenderThread(queue))
+    THREAD_SET.append(DataCollectionThread(queue, chips))
 
     # Execute threads
     for thread in THREAD_SET:
         thread.start()
 
-    # ---- (?) waits until thread completes to resume the main thread (i.e the script) (but there isn't anything else...)
+    # waits until thread completes to resume the main thread (i.e the script)
+    # Currently this code never finishes as there is no conclusion to the previous loop.
     for thread in THREAD_SET:
         thread.join()
